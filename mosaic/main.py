@@ -1,7 +1,7 @@
 import sys
 
 from mosaic.application import MosaicEditor
-from mosaic.views.main_window import MainWindow
+from mosaic.widgets.main_window import MainWindow
 
 
 def main() -> int:

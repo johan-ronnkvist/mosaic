@@ -6,6 +6,9 @@ authors = ["Johan Rönnkvist <johan.ronnkvist@gmail.com>"]
 license = "See LICENSE file"
 readme = "README.md"
 
+[tool.poetry.scripts]
+run-codecov = "scripts.tests:codecov"
+
 [tool.poetry.dependencies]
 python = ">=3.10, <3.13"
 pyside6 = "^6.6.1"
@@ -18,6 +21,7 @@ ruff = "^0.2.1"
 ruff-lsp = "^0.0.52"
 pytest = "^8.0.0"
 pre-commit = "^3.6.1"
+pytest-cov = "^4.1.0"
 
 [build-system]
 requires = ["poetry-core"]
