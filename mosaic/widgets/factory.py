@@ -1,6 +1,9 @@
 import inspect
+import logging
 from abc import ABC, abstractmethod
-from typing import TypeVar, Dict, Any, Type
+from typing import TypeVar, Dict, Any, Type, Set
+
+_logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
@@ -20,6 +23,16 @@ class Registration(ABC):
 
     @abstractmethod
     def resolve(self, factory: "Factory", *args, **kwargs) -> T:
+        pass
+
+    @property
+    @abstractmethod
+    def aliases(self) -> Set[Type[T]]:
+        pass
+
+    @property
+    @abstractmethod
+    def type(self) -> Type[T]:
         pass
 
 
@@ -42,16 +55,20 @@ class Factory(ABC):
 
 
 class RegistrationImpl(Registration):
-    def __init__(self, factory: Factory, object_type: Type[T]):
+    def __init__(self, factory: "FactoryImpl", object_type: Type[T]):
         self._factory = factory
         self._object_type = object_type
-        self._aliases = set(Type[T])
-        self._instance = None
+        self._aliases: Set[Type[T]] = set()
         self._kwargs: Dict[str, Any] = {}
+        self._instance = None
 
     def with_alias(self, alias: Type[T]) -> "RegistrationImpl":
+        if not issubclass(self._object_type, alias):
+            raise RegistrationError(
+                f"Failed to register alias {alias}, {self._object_type} is not a subclass of {alias}"
+            )
         self._aliases.add(alias)
-        # TODO: alias must be registered in factory also...
+        self._factory.register_alias(self._object_type, alias)
         return self
 
     def with_kwargs(self, **kwargs) -> "RegistrationImpl":
@@ -96,6 +113,14 @@ class RegistrationImpl(Registration):
 
         return self._object_type(*resolved_args, **resolved_kwargs)
 
+    @property
+    def aliases(self) -> Set[Type[T]]:
+        return self._aliases
+
+    @property
+    def type(self) -> Type[T]:
+        return self._object_type
+
 
 class RegistrationError(ValueError):
     pass
@@ -105,48 +130,70 @@ class ResolutionError(ValueError):
     pass
 
 
+class RemovalError(ValueError):
+    pass
+
+
 class FactoryImpl(Factory):
     def __init__(self):
         self._registrations: Dict[Type[T], RegistrationImpl] = {}
+        self._aliases: Dict[Type[T], Type[T]] = {}
 
     def register(self, object_type: Type[T]) -> RegistrationImpl:
-        if self._registrations.get(object_type) is not None:
+        if object_type in self._registrations.keys():
             raise RegistrationError(f"Type {object_type} is already registered")
+
+        if object_type in self._aliases:
+            raise RegistrationError(f"Type {object_type} is already registered as an alias")
 
         self._registrations[object_type] = RegistrationImpl(self, object_type)
 
-        return self._registrations[object_type]
+        return self._registrations.get(object_type)
 
     def resolve(self, object_type: Type[T], **kwargs) -> T:
-        registration = self._registrations.get(object_type)
+        resolved_type = self._resolve_alias(object_type)
+        registration = self._registrations.get(resolved_type, None)
         if registration is None:
-            raise ResolutionError(f"Type {object_type} is not registered")
+            if resolved_type is object_type:
+                raise ResolutionError(f"Type {object_type} is not registered")
+            else:
+                raise ResolutionError(f"{object_type} resolved to {resolved_type}, which is not registered")
 
         return registration.resolve(**kwargs)
 
     def remove(self, object_type: Type[T]) -> None:
-        self._registrations.pop(object_type, None)
+        if object_type in self._registrations:
+            self._remove_object_registration(object_type)
+        elif object_type in self._aliases:
+            for registration in self._registrations.values():
+                if object_type in registration.aliases:
+                    self._remove_object_registration(registration.type)
+                    break
+        else:
+            raise RemovalError(f"Type {object_type} is not registered")
+
+    def _remove_object_registration(self, object_type: Type[T]) -> None:
+        _logger.debug(f"Removing registration for {object_type}")
+        registration = self._registrations.pop(object_type)
+        for alias in registration.aliases:
+            self._remove_object_alias(alias)
+
+    def _remove_object_alias(self, alias_type: Type[T]) -> None:
+        _logger.debug(f"Removing alias {alias_type}")
+        self._aliases.pop(alias_type)
 
     def contains(self, item: Type[T]) -> bool:
-        return item in self._registrations
+        return item in self._registrations or item in self._aliases
+
+    def _resolve_alias(self, alias_type: Type[T]) -> Type[T]:
+        if alias_type in self._aliases:
+            return self._resolve_alias(self._aliases[alias_type])
+        else:
+            return alias_type
+
+    def register_alias(self, object_type: Type[T], alias_type: Type[T]) -> None:
+        assert issubclass(object_type, alias_type)
+        self._aliases[alias_type] = object_type
 
     def __contains__(self, item) -> bool:
         return self.contains(item)
-
-
-widget_factory = FactoryImpl()
-
-"""
-Usage Example:
-factory = WidgetFactory()
-
-single_main_menu = MyMenuBar()
-
-factory.register_type(MyMenuBar).as_type(QMenuBar).using_instance(single_main_menu)
-
-menu = factory.get(QMenuBar)
-assert menu is single_main_menu
-assert isinstance(menu, MyMenuBar)
-
-
-"""
