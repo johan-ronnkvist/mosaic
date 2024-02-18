@@ -47,7 +47,7 @@ class Model(Component):
         self.texture = texture
 
 
-class TestWidgetFactory:
+class TestFactory:
     def test_register_type(self, factory: Factory):
         factory.register(Camera)
         assert factory.contains(Camera)
