@@ -53,6 +53,9 @@ class Factory(ABC):
     def contains(self, object_type: Type[T]) -> bool:
         pass
 
+    def __contains__(self, item):
+        return self.contains(item)
+
 
 class RegistrationImpl(Registration):
     def __init__(self, factory: "FactoryImpl", object_type: Type[T]):
@@ -89,9 +92,11 @@ class RegistrationImpl(Registration):
                 raise ResolutionError("Instance is already provided, cannot provide additional kwargs.")
             return self._instance
 
-        # Inspect signature and remove 'self' from it
+        # Inspect signature and remove 'self, *args and **kwargs' from it
         signature = inspect.signature(self._object_type.__init__)
-        signature = signature.replace(parameters=list(signature.parameters.values())[1:])
+        excluded_params = ["self", "args", "kwargs"]
+        trimmed_params = [param for param in signature.parameters.values() if param.name not in excluded_params]
+        signature = signature.replace(parameters=trimmed_params)
 
         resolved_args = []
         resolved_kwargs = self._kwargs.copy()
@@ -194,6 +199,3 @@ class FactoryImpl(Factory):
     def register_alias(self, object_type: Type[T], alias_type: Type[T]) -> None:
         assert issubclass(object_type, alias_type)
         self._aliases[alias_type] = object_type
-
-    def __contains__(self, item) -> bool:
-        return self.contains(item)

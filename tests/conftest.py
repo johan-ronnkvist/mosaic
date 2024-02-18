@@ -1,8 +1,8 @@
 import pytest
 
-from mosaic.widgets.factory import FactoryImpl, Factory
+from mosaic.core.factory import FactoryImpl, Factory
 
 
 @pytest.fixture
-def widget_factory() -> Factory:
+def factory() -> Factory:
     return FactoryImpl()
