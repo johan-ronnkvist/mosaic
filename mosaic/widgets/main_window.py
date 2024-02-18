@@ -5,7 +5,7 @@ from mosaic.widgets.main_menu import MainMenu
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, main_menu: QMenuBar, status_bar: QStatusBar,  parent=None):
+    def __init__(self, main_menu: QMenuBar, status_bar: QStatusBar, parent=None):
         super().__init__(parent)
         self.setMinimumSize(800, 600)
 
