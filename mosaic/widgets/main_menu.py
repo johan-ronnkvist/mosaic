@@ -1,9 +1,11 @@
 from PySide6.QtWidgets import QMenuBar, QMenu
 
+from mosaic.widgets import factory
+
 
 class MainMenu(QMenuBar):
     def __init__(self, parent=None):
-        super(MainMenu, self).__init__(parent)
+        super().__init__(parent)
         self.parent = parent
         self._file = self.addMenu("&File")
         self._edit = self.addMenu("&Edit")
@@ -25,3 +27,6 @@ class MainMenu(QMenuBar):
     @property
     def help(self) -> QMenu:
         return self._help
+
+
+factory.register(MainMenu)

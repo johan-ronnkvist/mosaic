@@ -1,8 +1,8 @@
 import pytest
 
-from mosaic.core.factory import FactoryImpl, Factory
+from mosaic.core.builder import BuilderImpl, Builder
 
 
 @pytest.fixture
-def factory() -> Factory:
-    return FactoryImpl()
+def builder() -> Builder:
+    return BuilderImpl()

@@ -1,11 +1,13 @@
-from PySide6.QtWidgets import QMainWindow, QMenuBar, QStatusBar
+from PySide6.QtWidgets import QMainWindow
 
 from mosaic import actions
+from mosaic.widgets import factory
 from mosaic.widgets.main_menu import MainMenu
+from mosaic.widgets.status_bar import StatusBar
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, main_menu: QMenuBar, status_bar: QStatusBar, parent=None):
+    def __init__(self, main_menu: MainMenu, status_bar: StatusBar, parent=None):
         super().__init__(parent)
         self.setMinimumSize(800, 600)
 
@@ -18,3 +20,6 @@ class MainWindow(QMainWindow):
         menu = self.menuBar()
         if isinstance(menu, MainMenu):
             menu.file.addAction(actions.Quit(self))
+
+
+factory.register(MainWindow)

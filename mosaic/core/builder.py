@@ -22,7 +22,7 @@ class Registration(ABC):
         pass
 
     @abstractmethod
-    def resolve(self, factory: "Factory", *args, **kwargs) -> T:
+    def resolve(self, factory: "Builder", *args, **kwargs) -> T:
         pass
 
     @property
@@ -36,7 +36,7 @@ class Registration(ABC):
         pass
 
 
-class Factory(ABC):
+class Builder(ABC):
     @abstractmethod
     def register(self, object_type: Type[T]) -> Registration:
         pass
@@ -58,7 +58,7 @@ class Factory(ABC):
 
 
 class RegistrationImpl(Registration):
-    def __init__(self, factory: "FactoryImpl", object_type: Type[T]):
+    def __init__(self, factory: "BuilderImpl", object_type: Type[T]):
         self._factory = factory
         self._object_type = object_type
         self._aliases: Set[Type[T]] = set()
@@ -139,7 +139,7 @@ class RemovalError(ValueError):
     pass
 
 
-class FactoryImpl(Factory):
+class BuilderImpl(Builder):
     def __init__(self):
         self._registrations: Dict[Type[T], RegistrationImpl] = {}
         self._aliases: Dict[Type[T], Type[T]] = {}
