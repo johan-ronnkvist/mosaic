@@ -1,130 +1,12 @@
 import inspect
 import logging
-from abc import ABC, abstractmethod
-from typing import TypeVar, Dict, Any, Type, Set
+from typing import Any, Dict, Set, Type, TypeVar
+
+from pydantic import BaseModel, model_validator
 
 _logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
-
-
-class Registration(ABC):
-    @abstractmethod
-    def with_alias(self, alias: Type[T]) -> "Registration":
-        pass
-
-    @abstractmethod
-    def with_kwargs(self, **kwargs) -> "Registration":
-        pass
-
-    @abstractmethod
-    def with_instance(self, widget: T) -> "Registration":
-        pass
-
-    @abstractmethod
-    def resolve(self, factory: "Builder", *args, **kwargs) -> T:
-        pass
-
-    @property
-    @abstractmethod
-    def aliases(self) -> Set[Type[T]]:
-        pass
-
-    @property
-    @abstractmethod
-    def type(self) -> Type[T]:
-        pass
-
-
-class Builder(ABC):
-    @abstractmethod
-    def register(self, object_type: Type[T]) -> Registration:
-        pass
-
-    @abstractmethod
-    def resolve(self, object_type: Type[T], *args, **kwargs) -> T:
-        pass
-
-    @abstractmethod
-    def remove(self, object_type: Type[T]) -> None:
-        pass
-
-    @abstractmethod
-    def contains(self, object_type: Type[T]) -> bool:
-        pass
-
-    def __contains__(self, item):
-        return self.contains(item)
-
-
-class RegistrationImpl(Registration):
-    def __init__(self, factory: "BuilderImpl", object_type: Type[T]):
-        self._factory = factory
-        self._object_type = object_type
-        self._aliases: Set[Type[T]] = set()
-        self._kwargs: Dict[str, Any] = {}
-        self._instance = None
-
-    def with_alias(self, alias: Type[T]) -> "RegistrationImpl":
-        if not issubclass(self._object_type, alias):
-            raise RegistrationError(
-                f"Failed to register alias {alias}, {self._object_type} is not a subclass of {alias}"
-            )
-        self._aliases.add(alias)
-        self._factory.register_alias(self._object_type, alias)
-        return self
-
-    def with_kwargs(self, **kwargs) -> "RegistrationImpl":
-        if self._instance is not None:
-            raise RegistrationError("Cannot provide kwargs when using instance")
-        self._kwargs.update(kwargs)
-        return self
-
-    def with_instance(self, instance: T) -> "RegistrationImpl":
-        if self._kwargs:
-            raise RegistrationError("Cannot provide instance when using kwargs")
-        self._instance = instance
-        return self
-
-    def resolve(self, **kwargs) -> T:
-        if self._instance is not None:
-            if kwargs:
-                raise ResolutionError("Instance is already provided, cannot provide additional kwargs.")
-            return self._instance
-
-        # Inspect signature and remove 'self, *args and **kwargs' from it
-        signature = inspect.signature(self._object_type.__init__)
-        excluded_params = ["self", "args", "kwargs"]
-        trimmed_params = [param for param in signature.parameters.values() if param.name not in excluded_params]
-        signature = signature.replace(parameters=trimmed_params)
-
-        resolved_args = []
-        resolved_kwargs = self._kwargs.copy()
-
-        # Resolve parameters in the following order:
-        # 1. if a parameter is provided in kwargs, use it.
-        # 2. else, if a parameter exists in self._kwargs, use it.
-        # 3. else, if a parameter has a default value, use it.
-        # 4. else, resolve from factory
-        for param in signature.parameters.values():
-            if param.name in kwargs:
-                resolved_kwargs[param.name] = kwargs[param.name]
-            elif param.name in self._kwargs:
-                resolved_kwargs[param.name] = self._kwargs[param.name]
-            elif param.default != param.empty:
-                resolved_kwargs[param.name] = param.default
-            else:
-                resolved_args.append(self._factory.resolve(param.annotation))
-
-        return self._object_type(*resolved_args, **resolved_kwargs)
-
-    @property
-    def aliases(self) -> Set[Type[T]]:
-        return self._aliases
-
-    @property
-    def type(self) -> Type[T]:
-        return self._object_type
 
 
 class RegistrationError(ValueError):
@@ -135,67 +17,129 @@ class ResolutionError(ValueError):
     pass
 
 
-class RemovalError(ValueError):
-    pass
+class Context(BaseModel):
+    typename: type
+    aliases: Set[type] = set()
+    kwargs: Dict[str, Any] = {}
+    instance: Any = None
 
+    @model_validator(mode='after')
+    def validate_model(self) -> "Context":
+        if self.instance:
+            if not isinstance(self.instance, self.typename):
+                raise ValueError(f"Instance {self.instance} is not of type {self.typename}")
 
-class BuilderImpl(Builder):
-    def __init__(self):
-        self._registrations: Dict[Type[T], RegistrationImpl] = {}
-        self._aliases: Dict[Type[T], Type[T]] = {}
+            if self.kwargs:
+                raise ValueError("Cannot provide instance when using kwargs")
 
-    def register(self, object_type: Type[T]) -> RegistrationImpl:
-        if object_type in self._registrations.keys():
-            raise RegistrationError(f"Type {object_type} is already registered")
+        if self.aliases:
+            for alias in self.aliases:
+                if not issubclass(self.typename, alias):
+                    raise ValueError(f"{self.typename} is not a subclass of {alias}")
 
-        if object_type in self._aliases:
-            raise RegistrationError(f"Type {object_type} is already registered as an alias")
+        return self
 
-        self._registrations[object_type] = RegistrationImpl(self, object_type)
+    def resolve(self, builder: "Builder", **kwargs) -> Any:
+        """Resolve the type from the context using the provided builder.
 
-        return self._registrations.get(object_type)
+        Resolution of arguments is done in the following order:
+        1. If a parameter is provided in kwargs, use it.
+        2. Else, if a parameter exists in self._kwargs, use it.
+        3. Else, if a parameter has a default value, use it.
+        4. Else, resolve from factory
 
-    def resolve(self, object_type: Type[T], **kwargs) -> T:
-        resolved_type = self._resolve_alias(object_type)
-        registration = self._registrations.get(resolved_type, None)
-        if registration is None:
-            if resolved_type is object_type:
-                raise ResolutionError(f"Type {object_type} is not registered")
+        Args:
+            builder: The builder to use for resolving the type.
+            kwargs: Additional keyword arguments to use for resolving the type.
+        """
+        if self.instance:
+            return self.instance
+
+        # Inspect signature and remove 'self, *args and **kwargs' from it
+        signature = inspect.signature(self.typename.__init__)
+        excluded_params = ["self", "args", "kwargs"]
+        trimmed_params = [param for param in signature.parameters.values() if param.name not in excluded_params]
+        signature = signature.replace(parameters=trimmed_params)
+
+        resolved_kwargs = self.kwargs.copy()
+
+        for param in signature.parameters.values():
+            if param.name in kwargs:
+                resolved_kwargs[param.name] = kwargs[param.name]
+            elif param.name in self.kwargs:
+                resolved_kwargs[param.name] = self.kwargs[param.name]
+            elif param.default != param.empty:
+                resolved_kwargs[param.name] = param.default
             else:
-                raise ResolutionError(f"{object_type} resolved to {resolved_type}, which is not registered")
+                resolved_kwargs[param.name] = builder.resolve(param.annotation)
 
-        return registration.resolve(**kwargs)
+        if resolved_kwargs:
+            return self.typename(**resolved_kwargs)
 
-    def remove(self, object_type: Type[T]) -> None:
-        if object_type in self._registrations:
-            self._remove_object_registration(object_type)
-        elif object_type in self._aliases:
-            for registration in self._registrations.values():
-                if object_type in registration.aliases:
-                    self._remove_object_registration(registration.type)
-                    break
-        else:
-            raise RemovalError(f"Type {object_type} is not registered")
+        return self.typename()
 
-    def _remove_object_registration(self, object_type: Type[T]) -> None:
-        _logger.debug(f"Removing registration for {object_type}")
-        registration = self._registrations.pop(object_type)
-        for alias in registration.aliases:
-            self._remove_object_alias(alias)
 
-    def _remove_object_alias(self, alias_type: Type[T]) -> None:
-        _logger.debug(f"Removing alias {alias_type}")
-        self._aliases.pop(alias_type)
+class Builder:
+    def __init__(self):
+        self._registrations: Dict[type, Context] = {}
+        self._aliases: Dict[type, type] = {}
 
-    def contains(self, item: Type[T]) -> bool:
-        return item in self._registrations or item in self._aliases
+    def register(self, cls: type, alias: type = None, instance: Any = None, **kwargs) -> None:
+        """Register a type with the builder.
 
-    def _resolve_alias(self, alias_type: Type[T]) -> Type[T]:
-        if alias_type in self._aliases:
-            return self._resolve_alias(self._aliases[alias_type])
-        else:
-            return alias_type
+        Args:
+            cls: The type to register.
+            alias: An optional alias to register the type with.
+            instance: An optional instance to register the type with.
+            kwargs: Additional keyword arguments to use for resolving the type.
+        """
 
-    def register_alias(self, object_type: Type[T], alias_type: Type[T]) -> None:
-        assert issubclass(object_type, alias_type)
-        self._aliases[alias_type] = object_type
+        context = Context(typename=cls,
+                          aliases={alias} if alias else set(),
+                          instance=instance,
+                          kwargs=kwargs)
+
+        self._validate(context)
+        self._register(context)
+
+    def _resolve_alias(self, alias: type) -> type:
+        if alias in self._aliases:
+            return self._resolve_alias(self._aliases[alias])
+
+        return alias
+
+    def resolve(self, cls: Type[T], **kwargs) -> T:
+        """Resolve a type from the builder.
+
+        Args:
+            cls: The type to resolve.
+            kwargs: Additional keyword arguments to use for resolving the type.
+        """
+        resolved_type = self._resolve_alias(cls)
+        context = self._registrations.get(resolved_type, None)
+        if not context:
+            raise ResolutionError(f"Unable to resolve type {cls}, no registration found")
+
+        return context.resolve(self, **kwargs)
+
+    def _validate(self, context: Context):
+        if context.typename in self._registrations:
+            raise RegistrationError(f"Type {context.typename} is already registered")
+
+        if context.typename in self._aliases:
+            raise RegistrationError(f"Type {context.typename} is already registered as an alias")
+
+        for alias in context.aliases or set():
+            if alias in self._aliases or alias in self._registrations:
+                raise RegistrationError(f"Alias {alias} is already registered")
+
+    def _register(self, context: Context) -> None:
+        self._registrations[context.typename] = context
+
+        if context.aliases:
+            for alias in context.aliases:
+                self._aliases[alias] = context.typename
+
+    def __contains__(self, cls: type) -> bool:
+        """Check if the builder contains a type or alias."""
+        return cls in self._registrations or cls in self._aliases
