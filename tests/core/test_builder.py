@@ -1,168 +1,163 @@
-from typing import List
-
 import pytest
 
-from mosaic.core.builder import Builder, ResolutionError, RegistrationError, RemovalError
+from patterns.creational.builder import Builder
 
 
-class Component:
-    pass
+class Spice:
+    def __init__(self, name: str):
+        self.name = name
 
 
-class Camera(Component):
-    pass
+class Salt(Spice):
+    def __init__(self):
+        super().__init__("salt")
 
 
-class Vertex:
-    pass
+class Pepper(Spice):
+    def __init__(self):
+        super().__init__("pepper")
 
 
-class Viewport:
-    def __init__(self, camera: Camera):
-        self.camera = camera
+class Chili(Spice):
+    def __init__(self, variety: str = "jalapeno"):
+        super().__init__(f" {variety} chili")
 
 
-class Mesh(Component):
-    def __init__(self, vertices: List[Vertex]):
-        self.vertices = vertices
+class Herb(Spice):
+    def __init__(self, name: str):
+        super().__init__(name)
 
 
-class Capsule(Mesh):
-    def __init__(self, height: int, width: int, depth: int):
-        super().__init__(self.compute_mesh(height, width, depth))
-
-    @staticmethod
-    def compute_mesh(height: int, width: int, depth: int) -> List[Vertex]:
-        return [Vertex() for _ in range(height * width * depth)]
+class SaltySpiceMix(Spice):
+    def __init__(self, salt: Salt, spice: Spice):
+        super().__init__(f"{salt.name} and {spice.name}")
 
 
-class Texture(Component):
-    def __init__(self, filename: str):
-        self.filename = filename
+class TestBuilderRegistration:
+    def test_register_type(self, builder: Builder):
+        builder.register(Spice)
+
+    def test_register_type_with_kwargs(self, builder: Builder):
+        builder.register(Spice, name='cumin')
+
+    def test_register_type_with_instance(self, builder: Builder):
+        builder.register(Spice, instance=Spice(name='cumin'))
+
+    def test_register_type_with_alias(self, builder: Builder):
+        builder.register(Herb, alias=Spice)
+
+    def test_register_type_with_kwargs_and_alias(self, builder: Builder):
+        builder.register(Herb, name='cumin', alias=Spice)
+
+    def test_register_type_with_kwargs_instance(self, builder: Builder):
+        with pytest.raises(ValueError):
+            builder.register(Herb, name='cumin', instance=Herb(name='parsley'))
+
+    def test_register_type_with_instance_and_alias(self, builder: Builder):
+        builder.register(Herb, instance=Herb(name='cumin'), alias=Spice)
+
+    def test_register_existing_type(self, builder: Builder):
+        builder.register(Spice)
+        with pytest.raises(ValueError):
+            builder.register(Spice)
+
+    def test_register_type_that_collides_with_existing_alias(self, builder: Builder):
+        builder.register(Herb, alias=Spice)
+        with pytest.raises(ValueError):
+            builder.register(Spice)
+
+    def test_register_alias_that_collides_with_existing_type(self, builder: Builder):
+        builder.register(Spice)
+        with pytest.raises(ValueError):
+            builder.register(Herb, alias=Spice)
+
+    def test_register_alias_that_collides_with_existing_alias(self, builder: Builder):
+        builder.register(Herb, alias=Spice)
+        with pytest.raises(ValueError):
+            builder.register(Salt, alias=Spice)
+
+    def test_builder_contains_type_after_registration(self, builder: Builder):
+        assert Spice not in builder
+        builder.register(Spice)
+        assert Spice in builder
+
+    def test_builder_contains_alias_after_registration(self, builder: Builder):
+        assert Spice not in builder
+        builder.register(Herb, alias=Spice)
+        assert Spice in builder
+
+    def test_register_type_with_invalid_instance_type(self, builder: Builder):
+        with pytest.raises(ValueError):
+            builder.register(Spice, instance=str("test"))
+
+    def test_register_type_with_invalid_alias_type(self, builder: Builder):
+        with pytest.raises(ValueError):
+            builder.register(Herb, alias=str)
 
 
-class Model(Component):
-    def __init__(self, mesh: Mesh, texture: Texture):
-        self.mesh = mesh
-        self.texture = texture
+class TestBuilderResolution:
+    def test_resolve_existing_type(self, builder: Builder):
+        builder.register(Salt)
+        salt = builder.resolve(Salt)
+        assert isinstance(salt, Salt)
 
-
-class TestBuilder:
-    def test_register_unknown_type(self, builder: Builder):
-        builder.register(Camera)
-        assert builder.contains(Camera)
-
-    def test_resolve_registered_type(self, builder: Builder):
-        builder.register(Camera)
-        item = builder.resolve(Camera)
-        assert isinstance(item, Camera)
+    def test_resolve_missing_type(self, builder: Builder):
+        with pytest.raises(ValueError):
+            builder.resolve(Salt)
 
     def test_resolve_type_with_kwargs(self, builder: Builder):
-        builder.register(Texture)
-        item = builder.resolve(Texture, filename="texture.png")
-        assert isinstance(item, Texture)
-        assert item.filename == "texture.png"
+        builder.register(Spice, name='cumin')
+        spice = builder.resolve(Spice)
+        assert isinstance(spice, Spice)
+        assert spice.name == 'cumin'
 
-    def test_resolve_type_with_missing_dependency_raises_error(self, builder: Builder):
-        builder.register(Viewport)
-        with pytest.raises(ResolutionError):
-            builder.resolve(Viewport)
-
-    def test_resolve_type_with_existing_dependency(self, builder: Builder):
-        builder.register(Camera)
-        builder.register(Viewport)
-        viewport = builder.resolve(Viewport)
-        assert isinstance(viewport, Viewport)
-        assert viewport.camera is not None
-
-    def test_register_type_with_provided_kwargs(self, builder: Builder):
-        builder.register(Texture).with_kwargs(filename="texture.png")
-        texture = builder.resolve(Texture)
-        assert isinstance(texture, Texture)
-        assert texture.filename == "texture.png"
-
-    def test_resolve_type_with_provided_instance(self, builder: Builder):
-        camera = Camera()
-        builder.register(Camera).with_instance(camera)
-        builder.register(Viewport)
-        viewport = builder.resolve(Viewport)
-        assert viewport.camera is camera
-
-    def test_register_instance_with_kwargs_raises_error(self, builder: Builder):
-        texture = Texture("texture.png")
-        with pytest.raises(RegistrationError):
-            builder.register(Texture).with_instance(texture).with_kwargs(filename="other.png")
-
-    def test_register_kwargs_for_instance_raises_error(self, builder: Builder):
-        texture = Texture("texture.png")
-        with pytest.raises(RegistrationError):
-            builder.register(Texture).with_kwargs(filename="other.png").with_instance(texture)
+    def test_resolve_type_with_instance(self, builder: Builder):
+        spice = Spice(name='cumin')
+        builder.register(Spice, instance=spice)
+        resolved_spice = builder.resolve(Spice)
+        assert resolved_spice is spice
 
     def test_resolve_type_with_alias(self, builder: Builder):
-        builder.register(Capsule).with_kwargs(height=2, width=2, depth=2).with_alias(Mesh)
-        assert builder.contains(Capsule)
-        assert builder.contains(Mesh)
+        builder.register(Herb, alias=Spice, name='cumin')
+        spice = builder.resolve(Spice)
+        assert isinstance(spice, Herb)
 
-        mesh = builder.resolve(Mesh)
-        assert isinstance(mesh, Mesh)
-        assert isinstance(mesh, Capsule)
-        assert len(mesh.vertices) == 8
+    def test_resolve_type_with_kwarg_override(self, builder: Builder):
+        builder.register(Herb, name='oregano')
+        spice = builder.resolve(Herb, name='parsley')
+        assert isinstance(spice, Herb)
+        assert spice.name == 'parsley'
 
-        capsule = builder.resolve(Capsule)
-        assert isinstance(capsule, Capsule)
-        assert isinstance(capsule, Mesh)
+    def test_resolve_type_with_default_argument(self, builder: Builder):
+        builder.register(Chili)
+        chili = builder.resolve(Chili)
+        assert isinstance(chili, Chili)
+        assert chili.name == ' jalapeno chili'
 
-    def test_remove_type_also_removes_aliases(self, builder: Builder):
-        builder.register(Capsule).with_kwargs(height=2, width=2, depth=2).with_alias(Mesh)
-        assert builder.contains(Capsule)
-        assert builder.contains(Mesh)
+    def test_resolve_type_with_default_argument_override(self, builder: Builder):
+        builder.register(Chili)
+        chili = builder.resolve(Chili, variety='habanero')
+        assert isinstance(chili, Chili)
+        assert chili.name == ' habanero chili'
 
-        builder.remove(Capsule)
-        assert not builder.contains(Capsule)
-        assert not builder.contains(Mesh)
+    def test_resolve_type_with_dependency(self, builder: Builder):
+        builder.register(Salt)
+        builder.register(Pepper, alias=Spice)
+        builder.register(SaltySpiceMix)
+        # Builder will resolve Salt and Spice (alias for Pepper) and pass them to SaltySpiceMix
+        mix = builder.resolve(SaltySpiceMix)
+        assert isinstance(mix, SaltySpiceMix)
+        assert mix.name == "salt and pepper"
 
-    def test_remove_alias_also_removes_type(self, builder: Builder):
-        builder.register(Capsule).with_kwargs(height=2, width=2, depth=2).with_alias(Mesh)
-        assert builder.contains(Capsule)
-        assert builder.contains(Mesh)
+    def test_resolve_type_with_missing_dependency(self, builder: Builder):
+        builder.register(Salt)
+        builder.register(SaltySpiceMix)
+        with pytest.raises(ValueError):
+            builder.resolve(SaltySpiceMix)
 
-        builder.remove(Mesh)
-        assert not builder.contains(Capsule)
-        assert not builder.contains(Mesh)
-
-    def test_register_type_with_invalid_alias(self, builder: Builder):
-        with pytest.raises(RegistrationError):
-            builder.register(Texture).with_alias(str)
-
-    def test_resolve_with_kwargs_for_instance(self, builder: Builder):
-        texture = Texture("texture.png")
-        builder.register(Texture).with_instance(texture)
-        with pytest.raises(ResolutionError):
-            builder.resolve(Texture, filename="other.png")
-
-    def test_register_existing_type_raises_error(self, builder: Builder):
-        builder.register(Texture)
-        with pytest.raises(RegistrationError):
-            builder.register(Texture)
-
-    def test_register_type_that_is_already_registered_as_alias_raises_error(self, builder: Builder):
-        builder.register(Capsule).with_alias(Mesh)
-        with pytest.raises(RegistrationError):
-            builder.register(Mesh)
-
-    def test_remove_unregistered_type_raises_error(self, builder: Builder):
-        assert not builder.contains(Texture)
-        with pytest.raises(RemovalError):
-            builder.remove(Texture)
-
-    def test_resolve_type_with_multiple_dependencies(self, builder: Builder):
-        builder.register(Mesh).with_kwargs(vertices=[Vertex()])
-        builder.register(Texture).with_kwargs(filename="texture.png")
-        builder.register(Model)
-        first = builder.resolve(Model)
-        assert isinstance(first, Model)
-        assert first.texture.filename == "texture.png"
-
-        second = builder.resolve(Model, texture=Texture("other.png"))
-        assert isinstance(second, Model)
-        assert second.texture.filename == "other.png"
+    def test_resolve_type_with_dependency_override(self, builder: Builder):
+        builder.register(Salt)
+        builder.register(SaltySpiceMix)
+        mix = builder.resolve(SaltySpiceMix, spice=Spice(name='cumin'))
+        assert isinstance(mix, SaltySpiceMix)
+        assert mix.name == "salt and cumin"
