@@ -2,12 +2,20 @@ from typing import TypeVar, Type
 
 from PySide6.QtWidgets import QWidget
 
-from mosaic.core.builder import BuilderImpl, Builder
+from mosaic.core.builder import Builder
 
-factory: Builder = BuilderImpl()
+factory: Builder = Builder()
 
 T = TypeVar("T", bound=QWidget)
 
 
-def build(widget_type: Type[T], *args, **kwargs) -> T:
-    return factory.resolve(widget_type, *args, **kwargs)
+def register(**kwargs):
+    def decorator(cls):
+        factory.register(cls, **kwargs)
+        return cls
+
+    return decorator
+
+
+def resolve(widget_type: Type[T], **kwargs) -> T:
+    return factory.resolve(widget_type, **kwargs)

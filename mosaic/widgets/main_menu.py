@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QMenuBar, QMenu
 
-from mosaic.widgets import factory
+from mosaic import widgets
 
 
 class MainMenu(QMenuBar):
@@ -29,4 +29,4 @@ class MainMenu(QMenuBar):
         return self._help
 
 
-factory.register(MainMenu)
+widgets.factory.register(MainMenu, instance=MainMenu())

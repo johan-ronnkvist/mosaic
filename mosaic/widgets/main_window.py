@@ -1,11 +1,12 @@
 from PySide6.QtWidgets import QMainWindow
 
+import mosaic.widgets as widgets
 from mosaic import actions
-from mosaic.widgets import factory
 from mosaic.widgets.main_menu import MainMenu
 from mosaic.widgets.status_bar import StatusBar
 
 
+@widgets.register()
 class MainWindow(QMainWindow):
     def __init__(self, main_menu: MainMenu, status_bar: StatusBar, parent=None):
         super().__init__(parent)
@@ -20,6 +21,3 @@ class MainWindow(QMainWindow):
         menu = self.menuBar()
         if isinstance(menu, MainMenu):
             menu.file.addAction(actions.Quit(self))
-
-
-factory.register(MainWindow)

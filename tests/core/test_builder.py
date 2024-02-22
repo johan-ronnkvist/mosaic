@@ -1,6 +1,6 @@
 import pytest
 
-from patterns.creational.builder import Builder
+from mosaic.core.builder import Builder
 
 
 class Spice:
@@ -20,7 +20,7 @@ class Pepper(Spice):
 
 class Chili(Spice):
     def __init__(self, variety: str = "jalapeno"):
-        super().__init__(f" {variety} chili")
+        super().__init__(f"{variety} chili")
 
 
 class Herb(Spice):
@@ -38,23 +38,23 @@ class TestBuilderRegistration:
         builder.register(Spice)
 
     def test_register_type_with_kwargs(self, builder: Builder):
-        builder.register(Spice, name='cumin')
+        builder.register(Spice, name="cumin")
 
     def test_register_type_with_instance(self, builder: Builder):
-        builder.register(Spice, instance=Spice(name='cumin'))
+        builder.register(Spice, instance=Spice(name="cumin"))
 
     def test_register_type_with_alias(self, builder: Builder):
         builder.register(Herb, alias=Spice)
 
     def test_register_type_with_kwargs_and_alias(self, builder: Builder):
-        builder.register(Herb, name='cumin', alias=Spice)
+        builder.register(Herb, name="cumin", alias=Spice)
 
     def test_register_type_with_kwargs_instance(self, builder: Builder):
         with pytest.raises(ValueError):
-            builder.register(Herb, name='cumin', instance=Herb(name='parsley'))
+            builder.register(Herb, name="cumin", instance=Herb(name="parsley"))
 
     def test_register_type_with_instance_and_alias(self, builder: Builder):
-        builder.register(Herb, instance=Herb(name='cumin'), alias=Spice)
+        builder.register(Herb, instance=Herb(name="cumin"), alias=Spice)
 
     def test_register_existing_type(self, builder: Builder):
         builder.register(Spice)
@@ -106,39 +106,39 @@ class TestBuilderResolution:
             builder.resolve(Salt)
 
     def test_resolve_type_with_kwargs(self, builder: Builder):
-        builder.register(Spice, name='cumin')
+        builder.register(Spice, name="cumin")
         spice = builder.resolve(Spice)
         assert isinstance(spice, Spice)
-        assert spice.name == 'cumin'
+        assert spice.name == "cumin"
 
     def test_resolve_type_with_instance(self, builder: Builder):
-        spice = Spice(name='cumin')
+        spice = Spice(name="cumin")
         builder.register(Spice, instance=spice)
         resolved_spice = builder.resolve(Spice)
         assert resolved_spice is spice
 
     def test_resolve_type_with_alias(self, builder: Builder):
-        builder.register(Herb, alias=Spice, name='cumin')
+        builder.register(Herb, alias=Spice, name="cumin")
         spice = builder.resolve(Spice)
         assert isinstance(spice, Herb)
 
     def test_resolve_type_with_kwarg_override(self, builder: Builder):
-        builder.register(Herb, name='oregano')
-        spice = builder.resolve(Herb, name='parsley')
+        builder.register(Herb, name="oregano")
+        spice = builder.resolve(Herb, name="parsley")
         assert isinstance(spice, Herb)
-        assert spice.name == 'parsley'
+        assert spice.name == "parsley"
 
     def test_resolve_type_with_default_argument(self, builder: Builder):
         builder.register(Chili)
         chili = builder.resolve(Chili)
         assert isinstance(chili, Chili)
-        assert chili.name == ' jalapeno chili'
+        assert chili.name == "jalapeno chili"
 
     def test_resolve_type_with_default_argument_override(self, builder: Builder):
         builder.register(Chili)
-        chili = builder.resolve(Chili, variety='habanero')
+        chili = builder.resolve(Chili, variety="habanero")
         assert isinstance(chili, Chili)
-        assert chili.name == ' habanero chili'
+        assert chili.name == "habanero chili"
 
     def test_resolve_type_with_dependency(self, builder: Builder):
         builder.register(Salt)
@@ -158,6 +158,6 @@ class TestBuilderResolution:
     def test_resolve_type_with_dependency_override(self, builder: Builder):
         builder.register(Salt)
         builder.register(SaltySpiceMix)
-        mix = builder.resolve(SaltySpiceMix, spice=Spice(name='cumin'))
+        mix = builder.resolve(SaltySpiceMix, spice=Spice(name="cumin"))
         assert isinstance(mix, SaltySpiceMix)
         assert mix.name == "salt and cumin"

@@ -1,8 +1,8 @@
 import pytest
 
-from mosaic.core.builder import BuilderImpl, Builder
+from mosaic.core.builder import Builder
 
 
 @pytest.fixture
 def builder() -> Builder:
-    return BuilderImpl()
+    return Builder()
