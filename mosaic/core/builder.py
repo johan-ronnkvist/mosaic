@@ -1,6 +1,6 @@
 import inspect
 import logging
-from typing import Any, Dict, Set, Type, TypeVar
+from typing import Any, Callable, Dict, Optional, Set, Type, TypeVar
 
 from pydantic import BaseModel, model_validator
 
@@ -22,6 +22,7 @@ class Context(BaseModel):
     aliases: Set[type] = set()
     kwargs: Dict[str, Any] = {}
     instance: Any = None
+    factory: Optional[Callable] = None
 
     @model_validator(mode='after')
     def validate_model(self) -> "Context":
@@ -32,10 +33,19 @@ class Context(BaseModel):
             if self.kwargs:
                 raise ValueError("Cannot provide instance when using kwargs")
 
+            if self.factory:
+                raise ValueError("Cannot provide instance when using factory")
+
         if self.aliases:
             for alias in self.aliases:
                 if not issubclass(self.typename, alias):
                     raise ValueError(f"{self.typename} is not a subclass of {alias}")
+
+        if self.factory:
+            factory_signature = inspect.signature(self.factory)
+            if factory_signature.return_annotation != self.typename:
+                raise ValueError(
+                    f"Factory return type {factory_signature.return_annotation} does not match {self.typename}")
 
         return self
 
@@ -46,7 +56,7 @@ class Context(BaseModel):
         1. If a parameter is provided in kwargs, use it.
         2. Else, if a parameter exists in self._kwargs, use it.
         3. Else, if a parameter has a default value, use it.
-        4. Else, resolve from factory
+        4. Else, resolve from builder
 
         Args:
             builder: The builder to use for resolving the type.
@@ -56,7 +66,7 @@ class Context(BaseModel):
             return self.instance
 
         # Inspect signature and remove 'self, *args and **kwargs' from it
-        signature = inspect.signature(self.typename.__init__)
+        signature = inspect.signature(self.factory or self.typename.__init__)
         excluded_params = ["self", "args", "kwargs"]
         trimmed_params = [param for param in signature.parameters.values() if param.name not in excluded_params]
         signature = signature.replace(parameters=trimmed_params)
@@ -73,10 +83,10 @@ class Context(BaseModel):
             else:
                 resolved_kwargs[param.name] = builder.resolve(param.annotation)
 
-        if resolved_kwargs:
+        if self.factory:
+            return self.factory(**resolved_kwargs)
+        else:
             return self.typename(**resolved_kwargs)
-
-        return self.typename()
 
 
 class Builder:
@@ -84,7 +94,7 @@ class Builder:
         self._registrations: Dict[type, Context] = {}
         self._aliases: Dict[type, type] = {}
 
-    def register(self, cls: type, alias: type = None, instance: Any = None, **kwargs) -> None:
+    def register(self, cls: type, alias: type = None, instance: Any = None, factory=None, **kwargs) -> None:
         """Register a type with the builder.
 
         Args:
@@ -97,6 +107,7 @@ class Builder:
         context = Context(typename=cls,
                           aliases={alias} if alias else set(),
                           instance=instance,
+                          factory=factory,
                           kwargs=kwargs)
 
         self._validate(context)
