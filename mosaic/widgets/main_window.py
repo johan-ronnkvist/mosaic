@@ -1,12 +1,10 @@
 from PySide6.QtWidgets import QMainWindow
 
-import mosaic.widgets as widgets
 from mosaic import actions
 from mosaic.widgets.main_menu import MainMenu
 from mosaic.widgets.status_bar import StatusBar
 
 
-@widgets.register()
 class MainWindow(QMainWindow):
     def __init__(self, main_menu: MainMenu, status_bar: StatusBar, parent=None):
         super().__init__(parent)

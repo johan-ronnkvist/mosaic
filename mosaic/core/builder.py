@@ -17,16 +17,23 @@ class ResolutionError(ValueError):
     pass
 
 
+class LazyInit(BaseModel):
+    pass
+
+
 class Context(BaseModel):
     typename: type
     aliases: Set[type] = set()
     kwargs: Dict[str, Any] = {}
-    instance: Any = None
+    instance: Any | LazyInit = None
     factory: Optional[Callable] = None
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def validate_model(self) -> "Context":
-        if self.instance:
+        if isinstance(self.instance, LazyInit):
+            self.instance = LazyInit
+
+        if self.instance and self.instance is not LazyInit:
             if not isinstance(self.instance, self.typename):
                 raise ValueError(f"Instance {self.instance} is not of type {self.typename}")
 
@@ -45,11 +52,23 @@ class Context(BaseModel):
             factory_signature = inspect.signature(self.factory)
             if factory_signature.return_annotation != self.typename:
                 raise ValueError(
-                    f"Factory return type {factory_signature.return_annotation} does not match {self.typename}")
+                    f"Factory return type {factory_signature.return_annotation} does not match {self.typename}"
+                )
 
         return self
 
+    def _lazy_init_instance(self) -> bool:
+        return self.instance is LazyInit or isinstance(self.instance, LazyInit)
+
     def resolve(self, builder: "Builder", **kwargs) -> Any:
+        return self._instance(builder, **kwargs) or self._create(builder, **kwargs)
+
+    def _instance(self, builder: "Builder", **kwargs) -> Any:
+        if self.instance is LazyInit:
+            self.instance = self._create(builder, **kwargs)
+        return self.instance
+
+    def _create(self, builder: "Builder", **kwargs) -> Any:
         """Resolve the type from the context using the provided builder.
 
         Resolution of arguments is done in the following order:
@@ -62,8 +81,6 @@ class Context(BaseModel):
             builder: The builder to use for resolving the type.
             kwargs: Additional keyword arguments to use for resolving the type.
         """
-        if self.instance:
-            return self.instance
 
         # Inspect signature and remove 'self, *args and **kwargs' from it
         signature = inspect.signature(self.factory or self.typename.__init__)
@@ -102,13 +119,12 @@ class Builder:
             alias: An optional alias to register the type with.
             instance: An optional instance to register the type with.
             kwargs: Additional keyword arguments to use for resolving the type.
+            factory: An optional factory to use for resolving the type.
         """
 
-        context = Context(typename=cls,
-                          aliases={alias} if alias else set(),
-                          instance=instance,
-                          factory=factory,
-                          kwargs=kwargs)
+        context = Context(
+            typename=cls, aliases={alias} if alias else set(), instance=instance, factory=factory, kwargs=kwargs
+        )
 
         self._validate(context)
         self._register(context)

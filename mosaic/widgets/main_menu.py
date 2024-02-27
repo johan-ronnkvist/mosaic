@@ -1,7 +1,5 @@
 from PySide6.QtWidgets import QMenuBar, QMenu
 
-from mosaic import widgets
-
 
 class MainMenu(QMenuBar):
     def __init__(self, parent=None):
@@ -27,6 +25,3 @@ class MainMenu(QMenuBar):
     @property
     def help(self) -> QMenu:
         return self._help
-
-
-widgets.factory.register(MainMenu, instance=MainMenu())
