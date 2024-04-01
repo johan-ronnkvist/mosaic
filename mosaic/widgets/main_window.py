@@ -12,6 +12,7 @@ class MainWindow(QMainWindow):
 
         self.setMenuBar(main_menu)
         self.setStatusBar(status_bar)
+        # self.setCentralWidget(view)
 
         self.populate_menus()
 

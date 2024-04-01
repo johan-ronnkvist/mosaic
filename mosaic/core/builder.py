@@ -1,12 +1,11 @@
 import inspect
 import logging
-from typing import Any, Callable, Dict, Optional, Set, Type, TypeVar
+from collections.abc import Callable
+from typing import Any, TypeVar, Type
 
 from pydantic import BaseModel, model_validator
 
 _logger = logging.getLogger(__name__)
-
-T = TypeVar("T")
 
 
 class RegistrationError(ValueError):
@@ -21,15 +20,35 @@ class LazyInit(BaseModel):
     pass
 
 
+T = TypeVar("T")
+
+
 class Context(BaseModel):
-    typename: type
-    aliases: Set[type] = set()
-    kwargs: Dict[str, Any] = {}
-    instance: Any | LazyInit = None
-    factory: Optional[Callable] = None
+    """Context for a type registration.
+
+    Args:
+        typename: The type to register.
+        aliases: An optional set of aliases to register the type with.
+        instance: An optional instance to register the type with.
+        kwargs: Additional keyword arguments to use for resolving the type.
+        factory: An optional factory to use for resolving the type.
+    """
+
+    typename: Type[T]
+    aliases: set[type] = set()
+    kwargs: dict[str, Any] = {}
+    instance: T | LazyInit = None
+    factory: Callable[[Any], T] | None = None
 
     @model_validator(mode="after")
     def validate_model(self) -> "Context":
+        self._validate_instance()
+        self._validate_aliases()
+        self._validate_factory()
+
+        return self
+
+    def _validate_instance(self):
         if isinstance(self.instance, LazyInit):
             self.instance = LazyInit
 
@@ -43,19 +62,17 @@ class Context(BaseModel):
             if self.factory:
                 raise ValueError("Cannot provide instance when using factory")
 
+    def _validate_aliases(self):
         if self.aliases:
             for alias in self.aliases:
                 if not issubclass(self.typename, alias):
                     raise ValueError(f"{self.typename} is not a subclass of {alias}")
 
+    def _validate_factory(self):
         if self.factory:
             factory_signature = inspect.signature(self.factory)
             if factory_signature.return_annotation != self.typename:
-                raise ValueError(
-                    f"Factory return type {factory_signature.return_annotation} does not match {self.typename}"
-                )
-
-        return self
+                raise ValueError(f"Return type {factory_signature.return_annotation} does not match {self.typename}")
 
     def _lazy_init_instance(self) -> bool:
         return self.instance is LazyInit or isinstance(self.instance, LazyInit)
@@ -108,10 +125,17 @@ class Context(BaseModel):
 
 class Builder:
     def __init__(self):
-        self._registrations: Dict[type, Context] = {}
-        self._aliases: Dict[type, type] = {}
+        self._registrations: dict[type, Context] = {}
+        self._aliases: dict[type, type] = {}
 
-    def register(self, cls: type, alias: type = None, instance: Any = None, factory=None, **kwargs) -> None:
+    def register(
+        self,
+        cls: Type[T],
+        alias: type = None,
+        instance: T | LazyInit = None,
+        factory: Callable[[Any], T] | None = None,
+        **kwargs,
+    ) -> None:
         """Register a type with the builder.
 
         Args:
@@ -123,7 +147,11 @@ class Builder:
         """
 
         context = Context(
-            typename=cls, aliases={alias} if alias else set(), instance=instance, factory=factory, kwargs=kwargs
+            typename=cls,
+            aliases={alias} if alias else set(),
+            instance=instance,
+            factory=factory,
+            kwargs=kwargs,
         )
 
         self._validate(context)
@@ -135,7 +163,7 @@ class Builder:
 
         return alias
 
-    def resolve(self, cls: Type[T], **kwargs) -> T:
+    def resolve(self, cls: type[T], **kwargs) -> T:
         """Resolve a type from the builder.
 
         Args:

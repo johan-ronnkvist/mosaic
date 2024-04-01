@@ -18,3 +18,4 @@ class MosaicEditor(QApplication):
         self.setApplicationName("Mosaic Editor")
         self.setOrganizationName("Mosaic")
         self.setApplicationVersion(_version())
+        self.setStyle("Fusion")

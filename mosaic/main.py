@@ -1,7 +1,26 @@
+import logging
 import sys
 
-from mosaic import widgets, config
+import mosaic.widgets as widgets
+from mosaic import config
 from mosaic.application import MosaicEditor
+from mosaic.core.builder import LazyInit
+from mosaic.domain.tilescene import TileScene
+from mosaic.widgets.main_menu import MainMenu
+from mosaic.widgets.main_window import MainWindow
+from mosaic.widgets.scene_view import SceneView
+from mosaic.widgets.status_bar import StatusBar
+
+logging.basicConfig(level=logging.DEBUG)
+
+
+def register_widgets():
+    factory = widgets.factory
+    factory.register(MainMenu, instance=LazyInit)
+    factory.register(StatusBar, instance=LazyInit)
+    factory.register(MainWindow, instance=LazyInit)
+    factory.register(SceneView)
+    factory.register(TileScene, instance=TileScene())
 
 
 def main() -> int:
