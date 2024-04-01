@@ -43,3 +43,5 @@ repos:
         always_run: true
         language: python
         pass_filenames: false
+        stages:
+          - pre-push
