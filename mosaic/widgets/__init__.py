@@ -3,6 +3,8 @@ from typing import TypeVar, Type
 from PySide6.QtWidgets import QWidget
 
 from mosaic.core.builder import Builder
+from .graphics_view import GraphicsView
+from .inspector import Inspector, InspectDockable
 
 # flake8: noqa
 from .main_menu import MainMenu
